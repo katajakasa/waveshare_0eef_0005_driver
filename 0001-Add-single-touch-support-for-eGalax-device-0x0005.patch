@@ -1,0 +1,117 @@
+From e32458e79a179d2c3d674701d600fbf5c541c250 Mon Sep 17 00:00:00 2001
+From: Tuomas Virtanen <katajakasa@gmail.com>
+Date: Sat, 23 Jan 2016 23:04:36 +0200
+Subject: [PATCH] Add single-touch support for eGalax device 0x0005
+
+---
+ drivers/input/touchscreen/Kconfig          |  5 +++
+ drivers/input/touchscreen/usbtouchscreen.c | 56 ++++++++++++++++++++++++++++++
+ 4 files changed, 61 insertions(+)
+
+diff --git a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
+index 6536cd2..80c1991
+--- a/drivers/input/touchscreen/Kconfig
++++ b/drivers/input/touchscreen/Kconfig
+@@ -811,6 +811,11 @@ config TOUCHSCREEN_USB_EGALAX
+ 	bool "eGalax, eTurboTouch CT-410/510/700 device support" if EXPERT
+ 	depends on TOUCHSCREEN_USB_COMPOSITE
+ 
++config TOUCHSCREEN_USB_EGALAX_MT
++    default y
++    bool "eGalax multitouch device support" if EXPERT
++    depends on TOUCHSCREEN_USB_COMPOSITE
++
+ config TOUCHSCREEN_USB_PANJIT
+ 	default y
+ 	bool "PanJit device support" if EXPERT
+diff --git a/drivers/input/touchscreen/usbtouchscreen.c b/drivers/input/touchscreen/usbtouchscreen.c
+index 2c41107..90c23a9
+--- a/drivers/input/touchscreen/usbtouchscreen.c
++++ b/drivers/input/touchscreen/usbtouchscreen.c
+@@ -143,6 +143,7 @@ enum {
+ 	DEVTYPE_NEXIO,
+ 	DEVTYPE_ELO,
+ 	DEVTYPE_ETOUCH,
++    DEVTYPE_EGALAX_MT,
+ };
+ 
+ #define USB_DEVICE_HID_CLASS(vend, prod) \
+@@ -168,6 +169,10 @@ static const struct usb_device_id usbtouch_devices[] = {
+ 	{USB_DEVICE(0x1234, 0x0002), .driver_info = DEVTYPE_EGALAX},
+ #endif
+ 
++#ifdef CONFIG_TOUCHSCREEN_USB_EGALAX_MT
++    {USB_DEVICE(0x0eef, 0x0005), .driver_info = DEVTYPE_EGALAX_MT},
++#endif
++
+ #ifdef CONFIG_TOUCHSCREEN_USB_PANJIT
+ 	{USB_DEVICE(0x134c, 0x0001), .driver_info = DEVTYPE_PANJIT},
+ 	{USB_DEVICE(0x134c, 0x0002), .driver_info = DEVTYPE_PANJIT},
+@@ -291,6 +296,44 @@ static int e2i_read_data(struct usbtouch_usb *dev, unsigned char *pkt)
+ 
+ 
+ /*****************************************************************************
++ * eGalax Multitouch part
++ */
++
++#ifdef CONFIG_TOUCHSCREEN_USB_EGALAX_MT
++
++#ifndef MULTI_PACKET
++#define MULTI_PACKET
++#endif
++
++#define EGALAX_MT_PKT_TYPE_START 0xAA
++#define EGALAX_MT_PKT_TYPE_MID 0xBB
++#define EGALAX_MT_PKT_TYPE_END 0xCC
++
++static int egalax_mt_read_data(struct usbtouch_usb *dev, unsigned char *pkt)
++{
++    if(pkt[0] != EGALAX_MT_PKT_TYPE_START)
++        return 0;
++
++    if(pkt[1] == 1) {
++        dev->x = (pkt[2] << 8) | pkt[3];
++        dev->y = (pkt[4] << 8) | pkt[5];
++    }
++    dev->touch = pkt[1] & 0x01;
++
++    return 1;
++}
++
++static int egalax_mt_get_pkt_len(unsigned char *buf, int len)
++{
++    if(buf[0] == EGALAX_MT_PKT_TYPE_START) {
++        return 25;
++    }
++    return 0;
++}
++
++ #endif
++
++/*****************************************************************************
+  * eGalax part
+  */
+ 
+@@ -1102,6 +1145,19 @@ static struct usbtouch_device_info usbtouch_dev_info[] = {
+ 	},
+ #endif
+ 
++#ifdef CONFIG_TOUCHSCREEN_USB_EGALAX_MT
++    [DEVTYPE_EGALAX_MT] = {
++        .min_xc     = 0x0,
++        .max_xc     = 0x07ff,
++        .min_yc     = 0x0,
++        .max_yc     = 0x07ff,
++        .rept_size  = 100,
++        .process_pkt    = usbtouch_process_multi,
++        .get_pkt_len    = egalax_mt_get_pkt_len,
++        .read_data      = egalax_mt_read_data,
++    },
++#endif
++
+ #ifdef CONFIG_TOUCHSCREEN_USB_PANJIT
+ 	[DEVTYPE_PANJIT] = {
+ 		.min_xc		= 0x0,
+-- 
+2.1.4
+
